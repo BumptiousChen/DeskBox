@@ -1970,11 +1970,28 @@ public sealed partial class WidgetManager
     /// <summary>
     /// Remove a widget and close its window.
     /// </summary>
-    public async Task RemoveWidgetAsync(string widgetId, WidgetRemovalAction removalAction = WidgetRemovalAction.RemoveWidgetOnly)
+    public async Task RemoveWidgetAsync(
+        string widgetId,
+        WidgetRemovalAction removalAction = WidgetRemovalAction.RemoveWidgetOnly,
+        IntPtr ownerWindowHandle = default)
     {
         var config = FindConfig(widgetId);
         if (config is not null)
         {
+            // Managed-folder cleanup runs before any irreversible removal
+            // step: a failed move-back or recycle throws here and leaves the
+            // widget fully intact, so the close flow can surface the error
+            // and the user can retry. Structurally invalid cleanup requests
+            // (e.g. a widget on a non-default storage path) downgrade to
+            // widget-only removal instead of blocking the deletion.
+            bool folderCleanupApplicable =
+                removalAction != WidgetRemovalAction.RemoveWidgetOnly &&
+                config.FollowsDefaultStoragePath &&
+                IsDefaultManagedStorageFolder(config.MappedFolderPath);
+            await ApplyWidgetRemovalActionAsync(
+                config,
+                folderCleanupApplicable ? removalAction : WidgetRemovalAction.RemoveWidgetOnly,
+                ownerWindowHandle);
             await RemoveWidgetFromGroupAsync(widgetId, revealStandalone: false);
         }
         _deletedWidgetIds.Add(widgetId);
@@ -2008,15 +2025,6 @@ public sealed partial class WidgetManager
 
         if (config is not null)
         {
-            try
-            {
-                await ApplyWidgetRemovalActionAsync(config, removalAction);
-            }
-            catch (Exception ex)
-            {
-                App.Log($"[WidgetManager] Managed folder cleanup failed while deleting widget '{widgetId}'. The widget will be removed and the folder will be kept. {ex}");
-            }
-
             RemoveMappedWidgetShortcut(config);
             // Per-widget custom icon/background assets follow the widget out:
             // nothing under data/widget-assets may outlive its config.

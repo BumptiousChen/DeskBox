@@ -864,7 +864,8 @@ public sealed partial class ContentWidgetWindow
         {
             await widgetManager.RemoveWidgetAsync(
                 _config.Id,
-                removalAction);
+                removalAction,
+                HWnd);
         }
         catch (Exception ex)
         {

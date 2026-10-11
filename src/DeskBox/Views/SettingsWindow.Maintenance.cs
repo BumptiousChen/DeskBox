@@ -263,6 +263,19 @@ public sealed partial class SettingsWindow
                 return;
             }
 
+            // The pending marker was written before this dialog opened;
+            // persist the confirmation now so a crash, hidden window, or
+            // exit between here and the relaunch discards the restore at
+            // the next launch instead of applying it unconfirmed.
+            if (!await App.Current.DataBackupService.ConfirmPendingFullRestoreAsync())
+            {
+                await App.Current.DataBackupService.CancelPendingRestoreAsync();
+                await ShowInfoDialogAsync(
+                    _localizationService.T("Settings.DataBackup.RestoreFailedTitle"),
+                    _localizationService.Format("Settings.DataBackup.RestoreFailedBody", string.Empty));
+                return;
+            }
+
             AppRelaunchScheduleResult relaunch = AppRelaunchService.ScheduleAfterCurrentProcessExit();
             if (!relaunch.Started)
             {

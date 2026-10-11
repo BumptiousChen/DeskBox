@@ -136,6 +136,7 @@ Every release publishes a matching `.sha256` sidecar for each installer. Code si
 - **Dress up your widgets.** Swap any widget's icon for an emoji or a local image, give widgets their own backgrounds, choose global background modes (material, unified image, or a panorama where each widget frames its own slice of the image), and add border styles and a text shadow.
 - **Quieter, safer starts.** Start silently with Windows and summon everything back from the tray or hotkey; an elevated launch explains itself and restarts at normal privileges in one click; migrating files into managed storage is now a verified copy-first flow that never auto-deletes the source.
 - **More polish.** Four bundled weather icon styles, PowerToys-style hotkey recording, undoable "move all widgets to this display", and a reorganized Settings window with accordions.
+- **File-safety hardening.** A pre-release audit round closed every reachable data-loss path it found: full restores can no longer apply unconfirmed, deleting search results follows the Windows confirmation even on volumes without a Recycle Bin, network-drive widget folders no longer bypass the bin, attachment removal only ever touches managed copies, and a failed move-back keeps the widget intact with a clear message.
 - **Platform.** Windows App Runtime 2.5.1; the minimum supported Windows 10 build is now 19041 (version 2004).
 
 Read the complete [changelog](CHANGELOG.md) or the [1.5.6 release notes](docs/releases/v1.5.6.md).

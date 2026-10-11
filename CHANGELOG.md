@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.5.6 - 2026-10-02
+## 1.5.6 - 2026-10-11
 
 ### English
 
@@ -54,6 +54,12 @@
 - Diagnostics exports keep HRESULT hex error codes readable instead of redacting them as secrets.
 - Clicking a file tile with the mouse no longer paints a thick keyboard-style focus border around it; keyboard focus visuals are unchanged.
 - Installers now close a lingering thumbnail-proxy process during upgrades, so an orphaned proxy can no longer lock files and stall the installer.
+- A full backup restore can no longer apply without your answer: if the app exits or crashes while the restore confirmation dialog is still open, the next launch discards the pending restore instead of silently replacing your data with the backup's state.
+- Deleting search results goes through the Windows confirmation dialog, and on volumes without a Recycle Bin (network shares, for example) it can no longer silently become a permanent delete that contradicted the on-screen "move to Recycle Bin" promise.
+- Deleting a widget folder stored on a network drive no longer bypasses the Recycle Bin: headless deletions on network volumes are refused or routed through the interactive Shell confirmation instead of permanently removing the folder.
+- Removing an attachment from a todo or Quick Capture item can no longer delete a file the app does not own: only copies that provably live inside the managed attachment store are eligible, and they now go to the Recycle Bin instead of being removed permanently.
+- Closing a widget whose "move files back to the desktop" fails midway keeps the widget and explains what happened, instead of silently leaving some files on the desktop and the rest stranded in the folder.
+- Files dragged out of a widget and dropped back shortly afterwards are no longer silently ignored when a previous drag's completion event was lost.
 
 #### Interface
 
@@ -124,6 +130,12 @@
 - 诊断导出包保留 HRESULT 十六进制错误码的可读性，不再把它们当成密钥打码。
 - 鼠标点击文件瓦片不再出现粗重的键盘式焦点框；键盘操作时的焦点视觉保持不变。
 - 升级安装现在会一并关闭可能残留的缩略图代理进程，孤儿代理不再锁住文件、卡住安装器。
+- 全量备份还原不再会在无人确认的情况下自动执行：还原确认框还开着时应用退出或崩溃，下次启动会直接丢弃这次待定还原，而不是悄悄把你的数据整体替换成备份时的状态。
+- 删除搜索结果改走 Windows 系统确认对话框；在没有回收站的卷（例如网络共享）上，删除不再静默变成永久删除——那种与对话框“移入回收站”承诺相悖的行为已根除。
+- 收纳在网络驱动器上的格子文件夹，删除不再绕过回收站：网络卷上的后台删除会被拒绝，或改经系统交互确认，不再永久删除整个文件夹。
+- 从待办或随记条目移除附件，不再可能删掉非应用托管的文件：只有确凿位于托管附件目录内的副本才会被删除，且改走回收站而非永久删除。
+- 关闭格子时“把文件移回桌面”中途失败，格子会保留并说明原因，不再出现一部分文件在桌面、其余滞留文件夹还毫无提示的状态。
+- 从格子拖出后短时间内拖回原处的文件，不再因上一次拖动的完成事件丢失而被静默忽略。
 
 #### 界面
 
@@ -132,7 +144,7 @@
 - 格子的拖动与调整大小改为直接读取输入消息中的指针位置，在混合 DPI 多屏环境下保持精确。
 - 从格子拖出文件时，格子顶部会短暂显示修饰键提示（Shift 移动、Ctrl 复制），松手后弹出实际执行操作的结果提示；两条提示都可在设置中关闭，也可用提示上的 ✕ 按钮当场关掉。
 - 拖放提示学会退场：教学提示、拖入计数回执与拖出结果提示都带上了 ✕ 按钮——点击即关闭提示并当场关掉对应的设置开关，设置窗口实时跟随；拖入计数回执也纳入“拖放结果提示”开关管辖，不再无条件弹出；提示浮层在浅色模式下不再继承格子的白色前景，配色正确。
-- 新增「拖出格子时」设置：默认拖出动作可选“跟随 Windows 默认 / 移动 / 复制”三档（Windows 10 上始终按所选方式直接执行，“跟随 Windows 默认”按移动处理）；从随记、待办与搜索格子拖出条目始终为复制，不会移动。
+- 新增「拖出格子时」设置：默认拖出动作可选“跟随 Windows 默认 / 移动 / 复制”三档（Windows 10 上始终按所选方式直接执行，“跟随 Windows 默认”按复制处理，避免拖入聊天窗口等只认复制语义的目标时原件被移走）；从随记、待办与搜索格子拖出条目始终为复制，不会移动。
 - 文件列表像资源管理器一样整行响应：列表模式下悬停、选中与拖放反馈铺满整行，图标模式下铺满整个瓦片。
 - 空格子会自我解释：帮助卡写明可能原因与处理办法，不再是一块无解释的空白，空状态里的“添加”按钮也回来了；首次运行引导刷新了文案与流程，每步带提示。
 - 直装版卸载器会检测 Microsoft Store 版是否在装，可能共存放数据时保守保留——无法确认商店版状态（例如精简版 Windows 10）时走失败关闭路径并给出准确说明。

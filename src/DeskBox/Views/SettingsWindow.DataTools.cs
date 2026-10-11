@@ -351,7 +351,9 @@ public sealed partial class SettingsWindow
 
         try
         {
-            await App.Current.WidgetManager.DeleteOrphanManagedStorageFolderAsync(folderPath);
+            await App.Current.WidgetManager.DeleteOrphanManagedStorageFolderAsync(
+                folderPath,
+                _hWnd);
             RefreshManagedStorageFolderList();
             await ShowInfoDialogAsync(
                 _localizationService.T("Settings.ManagedStorage.DeleteCompleteTitle"),

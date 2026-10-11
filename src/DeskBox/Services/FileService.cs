@@ -1914,7 +1914,54 @@ public sealed partial class FileService
         }
 
         return await Task.Run(() =>
-            DeleteEntryWithShell(normalizedPath, ownerHandle, allowUndo: true));
+        {
+            if (ownerHandle == IntPtr.Zero && IsNetworkVolumePath(normalizedPath))
+            {
+                // FOF_ALLOWUNDO degrades to a silent permanent delete on
+                // volumes without a client-side Recycle Bin. A headless
+                // caller cannot consent to that, so refuse instead: callers
+                // treat false as "not deleted" and may retry with an owner
+                // window for the interactive Shell confirmation.
+                App.Log(
+                    $"[FileService] Refused headless recycle on a network volume: '{normalizedPath}'");
+                return false;
+            }
+
+            return DeleteEntryWithShell(normalizedPath, ownerHandle, allowUndo: true);
+        });
+    }
+
+    /// <summary>
+    /// True when the path sits on a network volume (UNC share or mapped
+    /// network drive) — i.e. a volume where FOF_ALLOWUNDO cannot guarantee
+    /// a Recycle Bin and a "recycle" silently becomes a permanent delete.
+    /// Detection failures deliberately report false: the caller falls back
+    /// to the pre-existing behavior rather than blocking routine deletes.
+    /// </summary>
+    internal static bool IsNetworkVolumePath(string path)
+    {
+        try
+        {
+            string fullPath = Path.GetFullPath(path);
+            if (fullPath.StartsWith(@"\\", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            string root = Path.GetPathRoot(fullPath) ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(root) ||
+                root.Length < 2 ||
+                root[1] != Path.VolumeSeparatorChar)
+            {
+                return false;
+            }
+
+            return new DriveInfo(root).DriveType == DriveType.Network;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>

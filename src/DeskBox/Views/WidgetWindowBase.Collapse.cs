@@ -3812,6 +3812,19 @@ public abstract partial class WidgetWindowBase
             return;
         }
 
+        // The capsule keeps the corner it actually occupied when the resize
+        // began. Config.PositionAnchor is the monitor-edge home for topology
+        // restore and may legitimately disagree with the capsule's corner;
+        // deriving the capsule from it here once pinned capsules to the
+        // panel's bottom edge after height resizes. Observed geometry is
+        // authoritative, the expansion anchor is the fallback, and the
+        // position anchor is only a last resort.
+        WidgetCompactExpansionAnchor anchor = ResolveObservedCompactAnchor() ??
+            _compactExpansionAnchor ??
+            WidgetCompactExpansionCalculator.FromPositionAnchor(
+                Config.PositionAnchor) ??
+            WidgetCompactExpansionAnchor.LeftTop;
+
         bool aligned = UsesAlignedCompactWidth();
         double scale = Win32Helper.GetDpiScaleForWindow(HWnd, RootElement.XamlRoot);
         // In aligned mode the capsule width tracks the panel width. Derive it from
@@ -3822,7 +3835,7 @@ public abstract partial class WidgetWindowBase
             : Config.CompactWidth;
         RectInt32 compactBounds = WidgetCompactBoundsCalculator.Calculate(
             expandedBounds,
-            Config.PositionAnchor,
+            WidgetCompactExpansionCalculator.ToPositionAnchor(anchor),
             scale,
             ResolveEffectiveCompactContentMode(),
             Config.WidgetKind,
@@ -3830,9 +3843,20 @@ public abstract partial class WidgetWindowBase
             clampCustomWidth: !aligned,
             heightContentMode: SettingsService.Settings.WidgetCompactContentMode);
         CaptureCompactPlacement(compactBounds, persist: false);
-        _compactExpansionAnchor =
-            WidgetCompactExpansionCalculator.FromPositionAnchor(Config.PositionAnchor) ??
-            _compactExpansionAnchor;
+        _compactExpansionAnchor = anchor;
+    }
+
+    private WidgetCompactExpansionAnchor? ResolveObservedCompactAnchor()
+    {
+        if (_expandedInteractionStartBounds is not { } expandedStart ||
+            _compactInteractionStartBounds is not { } compactStart)
+        {
+            return null;
+        }
+
+        return WidgetCompactExpansionCalculator.ResolveAnchorFromObservedCompactBounds(
+            compactStart,
+            expandedStart);
     }
 
     private void SynchronizeAlignedCompactBoundsAfterExpandedResize(RectInt32 expandedBounds)

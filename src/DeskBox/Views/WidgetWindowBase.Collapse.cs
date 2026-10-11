@@ -4311,7 +4311,7 @@ public abstract partial class WidgetWindowBase
         }
     }
 
-    private bool UsesAlignedCompactWidth() =>
+    protected bool UsesAlignedCompactWidth() =>
         SettingsService.NormalizeWidgetCompactWidthMode(
             SettingsService.Settings.WidgetCompactWidthMode) ==
         SettingsService.WidgetCompactWidthModeAligned;

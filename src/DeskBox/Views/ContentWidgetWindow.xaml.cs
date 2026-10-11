@@ -203,7 +203,8 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         string summary = string.Join(" · ", summaryParts);
         bool hasText = !string.IsNullOrWhiteSpace(title) || !string.IsNullOrWhiteSpace(summary);
         ImageSource? backgroundImage = viewModel.HasVisibleCurrentImage
-            ? glance.GetCompactBackgroundImage()
+            ? glance.GetCompactBackgroundImage(
+                ResolveGlanceCompactBackgroundDecodeWidth())
             : null;
         return new WidgetCompactPresentation(
             title,
@@ -224,6 +225,28 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
             FullBleedOverlayOpacity: hasText ? viewModel.ReadabilityStrengthOpacity : 0,
             UseUniformFullBleedOverlay: true,
             FullBleedBackgroundOpacity: viewModel.BackgroundImageOpacity);
+    }
+
+    /// <summary>
+    /// Physical decode width for the glance capsule's full-bleed background:
+    /// the capsule's actual logical width (aligned mode tracks the panel,
+    /// otherwise the compact width) at the current DPI, with the same 1.25
+    /// headroom the expanded surface uses. The old fixed 768 under-decoded
+    /// wide capsules and paid ~3x on narrow ones.
+    /// </summary>
+    private int ResolveGlanceCompactBackgroundDecodeWidth()
+    {
+        double logicalWidth = UsesAlignedCompactWidth()
+            ? Config.Width
+            : Config.CompactWidth ?? WidgetCompactBoundsCalculator.SummaryWidth;
+        double scale = RootElement.XamlRoot?.RasterizationScale ?? 1;
+        if (!double.IsFinite(scale) || scale <= 0)
+        {
+            scale = 1;
+        }
+
+        double physicalWidth = logicalWidth * scale * GlanceImageDecodeSizeCalculator.CompactBackgroundSupersamplingFactor;
+        return (int)Math.Clamp(Math.Ceiling(physicalWidth), 320, 1600);
     }
 
     private WidgetCompactPresentation CreateSearchCompactPresentation(

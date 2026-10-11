@@ -882,40 +882,13 @@ public sealed partial class GlanceWidgetContent : UserControl
 
         ImageBrush brush = CreateImageBrush(bitmap);
         incoming.Background = brush;
-        if (!_viewModel.IsCurrentImageOnline &&
-            _viewModel.ImageCount > LargeLocalStreamingImageSetThreshold)
-        {
-            // The framework's URI-keyed image cache has no eviction API, so
-            // a large local rotation set would pin every decoded frame for
-            // the session. Streamed sources stay out of that cache and keep
-            // the live footprint at ~2 bitmaps; small sets keep URI reuse.
-            _ = LoadImageFromRandomAccessStreamAsync(bitmap, path);
-        }
-        else
-        {
-            bitmap.UriSource = new Uri(path, UriKind.Absolute);
-        }
-    }
-
-    private const int LargeLocalStreamingImageSetThreshold = 24;
-
-    private static async Task LoadImageFromRandomAccessStreamAsync(
-        BitmapImage bitmap,
-        string path)
-    {
-        try
-        {
-            using Windows.Storage.Streams.IRandomAccessStream stream =
-                await Windows.Storage.Streams.FileRandomAccessStream.OpenAsync(
-                    path,
-                    Windows.Storage.FileAccessMode.Read);
-            await bitmap.SetSourceAsync(stream);
-        }
-        catch (Exception ex)
-        {
-            App.Log(
-                $"[GlanceWidgetContent] Streamed image load failed for '{path}': {ex.Message}");
-        }
+        // Rotation pins every decoded frame of the set when it goes through
+        // the URI-keyed framework cache, which has no eviction API — and
+        // small sets are the common case, so a size threshold cannot bound
+        // it. Streamed sources stay out of that cache and keep the live
+        // footprint at ~2 bitmaps; the crossfade runs only after
+        // ImageOpened, so the re-decode on each rotation is invisible.
+        _ = GlanceImageStreamLoader.LoadAsync(bitmap, path);
     }
 
     private void QueueImageQualityRefresh()

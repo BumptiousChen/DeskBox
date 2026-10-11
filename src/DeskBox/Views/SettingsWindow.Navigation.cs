@@ -1399,20 +1399,31 @@ public sealed partial class SettingsWindow
         }
     }
 
+    // Mirrors the library's InfoBarInformationalSeverity background
+    // (Microsoft.WinUI generic.xaml): Light = SystemFillColorAttentionBackground
+    // #80F6F6F6, Default/Dark = #08FFFFFF, HighContrast = SystemColorWindow.
+    // WinRT activations stay inside the method (never static initializers):
+    // headless test hosts touch this type without WinAppSDK activation.
+    private static Windows.UI.Color NoticeInfoBackgroundLight =>
+        Windows.UI.Color.FromArgb(0x80, 0xF6, 0xF6, 0xF6);
+    private static Windows.UI.Color NoticeInfoBackgroundDark =>
+        Windows.UI.Color.FromArgb(0x08, 0xFF, 0xFF, 0xFF);
+
     internal static void ApplyInformationalSeverityBrushes(InfoBar infoBar)
     {
-        if (Application.Current.Resources.TryGetValue(
-                "InfoBarInformationalSeverityBackgroundBrush", out object? background) &&
-            background is Brush backgroundBrush)
-        {
-            infoBar.Background = backgroundBrush;
-        }
-        if (Application.Current.Resources.TryGetValue(
-                "InfoBarInformationalSeverityForegroundBrush", out object? foreground) &&
-            foreground is Brush foregroundBrush)
-        {
-            infoBar.Foreground = foregroundBrush;
-        }
+        // Resolve per the notice's ActualTheme, never from
+        // Application.Current.Resources: that lookup serves themed keys from
+        // a stale dictionary on Windows 10 after a live theme switch, which
+        // painted the light informational wash over the dark theme (the
+        // Windows-11-only-correct mismatch). The template's default text
+        // colors already follow the theme, so only the background is pinned.
+        Windows.UI.Color background = new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast
+            ? new Windows.UI.ViewManagement.UISettings().GetColorValue(
+                Windows.UI.ViewManagement.UIColorType.Background)
+            : infoBar.ActualTheme == ElementTheme.Dark
+                ? NoticeInfoBackgroundDark
+                : NoticeInfoBackgroundLight;
+        infoBar.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(background);
     }
 
     // ── Notice InfoBar message typography ───────────────────────

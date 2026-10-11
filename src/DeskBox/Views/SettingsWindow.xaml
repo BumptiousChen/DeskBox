@@ -1700,10 +1700,12 @@ Text="DeskBox" />
                         <!-- Native InfoBar driven through the native Title/Message
                              properties. A sibling below the hotkey expander (matching
                              the search section's placement): the long wrapped message
-                             lays out at page width, and the severity brushes are
-                             pinned from code-behind because ThemeResource severity
-                             lookups fail inside late-created section templates.
-                             The message typography is also pinned from code-behind
+                             lays out at page width. The severity wash is pinned from
+                             code-behind (PinInformationalSeverityBrushes) because
+                             ThemeResource severity lookups fail inside late-created
+                             section templates; the pin resolves per ActualTheme so a
+                             live theme switch stays correct on Windows 10 too. The
+                             message typography is also pinned from code-behind
                              (SettingsWindow.ApplyNoticeMessageTypography): the
                              template's Title/Message font sizes resolve through
                              StaticResource lookups inside the control library's

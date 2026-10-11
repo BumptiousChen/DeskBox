@@ -3607,51 +3607,49 @@ public sealed partial class SearchPopupWindow : Window
             return;
         }
 
-        var dialog = new ContentDialog
-        {
-            XamlRoot = RootGrid.XamlRoot,
-            Title = string.Format(_localizationService.T("Search.Batch.DeleteTitle"), items.Count),
-            Content = _localizationService.T("Search.Delete.Message"),
-            PrimaryButtonText = _localizationService.T("Search.Delete.Action"),
-            CloseButtonText = _localizationService.T("Common.Cancel"),
-            DefaultButton = ContentDialogButton.Close
-        };
+        await DeleteFileSystemItemsCoreAsync(
+            items.Select(i => i.DetailPath!),
+            clearMultiSelectionOnSuccess: true);
+    }
 
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+    /// <summary>
+    /// Deletes search-result entries through the Shell with an owner window,
+    /// so the native confirmation (recycle or permanent, per the user's own
+    /// Explorer settings) replaces the retired self-drawn dialog: that dialog
+    /// promised a Recycle Bin while the underlying flags silently degraded to
+    /// a permanent delete on volumes without one.
+    /// </summary>
+    private async Task DeleteFileSystemItemsCoreAsync(
+        IEnumerable<string> paths,
+        bool clearMultiSelectionOnSuccess)
+    {
+        var fileService = (App.Current as App)?.FileService;
+        if (fileService is null || _hwnd == IntPtr.Zero)
         {
+            ShowTransientStatus(_localizationService.T("Search.Action.FileOperationFailed"));
             return;
         }
 
         try
         {
-            await Task.Run(() =>
+            IReadOnlySet<string> deletedPaths = await fileService.DeleteEntriesWithShellAsync(
+                paths,
+                recycle: true,
+                _hwnd);
+            if (deletedPaths.Count > 0)
             {
-                foreach (var item in items)
+                ShowTransientStatus(_localizationService.T("Search.Action.Deleted"));
+                if (clearMultiSelectionOnSuccess)
                 {
-                    var path = item.DetailPath!;
-                    if (File.Exists(path))
-                    {
-                        Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
-                            path,
-                            Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
-                            Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-                    }
-                    else if (Directory.Exists(path))
-                    {
-                        Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(
-                            path,
-                            Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
-                            Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-                    }
+                    ClearMultiSelection();
                 }
-            });
-            ShowTransientStatus(_localizationService.T("Search.Action.Deleted"));
-            ClearMultiSelection();
+            }
+
             await RefreshResultsAfterFileOperationAsync();
         }
         catch (Exception ex)
         {
-            App.Log($"[SearchPopup] Batch delete failed: {ex.Message}");
+            App.Log($"[SearchPopup] Delete failed: {ex.Message}");
             ShowTransientStatus(_localizationService.T("Search.Action.FileOperationFailed"));
         }
     }
@@ -3903,48 +3901,9 @@ public sealed partial class SearchPopupWindow : Window
             return;
         }
 
-        var dialog = new ContentDialog
-        {
-            XamlRoot = RootGrid.XamlRoot,
-            Title = string.Format(_localizationService.T("Search.Delete.Title"), item.Title),
-            Content = _localizationService.T("Search.Delete.Message"),
-            PrimaryButtonText = _localizationService.T("Search.Delete.Action"),
-            CloseButtonText = _localizationService.T("Common.Cancel"),
-            DefaultButton = ContentDialogButton.Close
-        };
-
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-        {
-            return;
-        }
-
-        try
-        {
-            await Task.Run(() =>
-            {
-                if (File.Exists(path))
-                {
-                    Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
-                        path,
-                        Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
-                        Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-                }
-                else
-                {
-                    Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(
-                        path,
-                        Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
-                        Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-                }
-            });
-            ShowTransientStatus(_localizationService.T("Search.Action.Deleted"));
-            await RefreshResultsAfterFileOperationAsync();
-        }
-        catch (Exception ex)
-        {
-            App.Log($"[SearchPopup] Delete failed: {ex.Message}");
-            ShowTransientStatus(_localizationService.T("Search.Action.FileOperationFailed"));
-        }
+        await DeleteFileSystemItemsCoreAsync(
+            [path],
+            clearMultiSelectionOnSuccess: false);
     }
 
     private void ShowFileSystemItemProperties(SearchResultItem item)

@@ -461,13 +461,14 @@ public sealed class JsonSerializationBaselineContractTests : IDisposable
             backup.ReplaceLineEndings("\r\n"),
             StringComparison.Ordinal);
 
-        // Five call sites: classic prepare + scoped cloud prepare + the
+        // Six call sites: classic prepare + scoped cloud prepare + the
         // pre-restore safety backup pin + the confirm-dialog item-merge
-        // mode update + the scoped-restore attempt-count persistence
-        // (part of the bounded-retry abandon cap). All must still go
-        // through the same atomic-write helper.
+        // mode update + the full-restore confirmation update + the
+        // scoped-restore attempt-count persistence (part of the
+        // bounded-retry abandon cap). All must still go through the same
+        // atomic-write helper.
         Assert.Equal(
-            5,
+            6,
             Regex.Matches(
                 backup,
                 @"await\s+WritePendingRestoreMarkerAtomicallyAsync\s*\(").Cast<Match>().Count());

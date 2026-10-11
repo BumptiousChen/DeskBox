@@ -1250,6 +1250,18 @@ public sealed partial class DeskBoxDataBackupService
                 return DeskBoxRestoreApplyResult.NoPendingRestore;
             }
 
+            if (marker.Domains is not { Count: > 0 } && !marker.FullRestoreConfirmed)
+            {
+                // Same defense for full restores: the marker predates its
+                // confirmation dialog, so an unanswered dialog (hidden
+                // settings window, exit, crash) must discard the restore
+                // instead of swapping the whole data directory on the next
+                // launch.
+                DeletePendingRestoreCore();
+                App.Log("[DataBackup] Discarded an unconfirmed full restore.");
+                return DeskBoxRestoreApplyResult.NoPendingRestore;
+            }
+
             if (marker.Domains is { Count: > 0 } markerDomains)
             {
                 return await ApplyScopedRestoreCoreAsync(
@@ -1510,6 +1522,43 @@ public sealed partial class DeskBoxDataBackupService
                         ? true
                         : marker.ScopedRestoreConfirmed
                 },
+                cancellationToken);
+            return true;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Persists the user's "restore" answer onto a pending FULL restore
+    /// marker. The marker is written before its confirmation dialog opens,
+    /// so this call is what authorizes the next launch to apply it; until
+    /// then the startup gate discards the marker. Returns false when
+    /// nothing is pending or the pending restore is scoped (scoped
+    /// restores confirm through their own item-mode call).
+    /// </summary>
+    internal async Task<bool> ConfirmPendingFullRestoreAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (!File.Exists(PendingRestoreMarkerPath))
+            {
+                return false;
+            }
+
+            PendingRestoreMarker marker = await ReadPendingRestoreMarkerAsync(cancellationToken);
+            if (marker.Domains is { Count: > 0 })
+            {
+                return false;
+            }
+
+            await WritePendingRestoreMarkerAtomicallyAsync(
+                PendingRestoreMarkerPath,
+                marker with { FullRestoreConfirmed = true },
                 cancellationToken);
             return true;
         }
@@ -3275,7 +3324,15 @@ public sealed partial class DeskBoxDataBackupService
         // chooses an item mode. Null means a pre-existing marker or full
         // restore and retains its historical apply behavior.
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        bool? ScopedRestoreConfirmed = null);
+        bool? ScopedRestoreConfirmed = null,
+        // Full restores are likewise unconfirmed until the user answers the
+        // restore dialog: the marker is written before that dialog opens, so
+        // a crash, hidden window, or exit in between must never let the next
+        // launch swap the whole data directory. Markers from versions
+        // without this field deserialize as false and are discarded — the
+        // safe direction, since the user simply re-runs the restore.
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        bool FullRestoreConfirmed = false);
 
     [JsonSourceGenerationOptions(
         GenerationMode = JsonSourceGenerationMode.Metadata,

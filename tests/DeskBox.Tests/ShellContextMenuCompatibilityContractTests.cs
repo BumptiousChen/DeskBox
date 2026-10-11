@@ -396,6 +396,36 @@ public sealed class ShellContextMenuCompatibilityContractTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void NativeMenuRoundInFlight_KeepsExpandedCapsuleFromCollapsingUnderProxyMenu()
+    {
+        string proxy = ReadRepositoryFile(
+            "src/DeskBox/Helpers/ShellContextMenuProxy.cs");
+        string windowBase = ReadRepositoryFile(
+            "src/DeskBox/Views/WidgetWindowBase.cs");
+
+        // The in-flight gate covers the whole round (visible menu, A→B swap,
+        // one-shot fallback, InvokeCommand), so the flag can never drop while
+        // a menu the user is browsing is still on screen.
+        Assert.Contains(
+            "internal static bool IsMenuRoundInFlight => Volatile.Read(ref s_menuInFlight) != 0;",
+            proxy,
+            StringComparison.Ordinal);
+
+        // The guard must sit in the base funnel: HasBlockingFlyoutOpen feeds
+        // both the Smart auto-collapse snapshot and SetCollapsedState's own
+        // collapse gate, so every entry point (pointer-leave timer, Esc,
+        // deactivation) sees the native menu, not only Smart mode.
+        Assert.Contains(
+            "if (ShellContextMenuProxy.IsMenuRoundInFlight)",
+            windowBase,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "protected virtual bool HasBlockingFlyoutOpen()",
+            windowBase,
+            StringComparison.Ordinal);
+    }
+
     private static string ReadRepositoryFile(string relativePath) =>
         File.ReadAllText(TestPaths.FromRepository(relativePath));
 

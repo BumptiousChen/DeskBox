@@ -95,6 +95,15 @@ internal static class ShellContextMenuProxy
         AppDomain.CurrentDomain.ProcessExit += (_, _) => DisposeServer();
     }
 
+    /// <summary>
+    /// True while a native menu round is in flight: the menu is visible, being
+    /// swapped to a newer right-click, or executing the command the user picked.
+    /// Widget hosts treat this as a blocking surface so capsules stay expanded
+    /// while the pointer is inside a menu that lives outside our HWND. The flag
+    /// is process-global on purpose: only one native menu may be open at a time.
+    /// </summary>
+    internal static bool IsMenuRoundInFlight => Volatile.Read(ref s_menuInFlight) != 0;
+
     /// <param name="renameLabel">
     /// Localized label for the host-owned rename entry the proxy appends to
     /// the Shell menu. Null or blank appends nothing, so callers that cannot

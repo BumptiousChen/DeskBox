@@ -98,7 +98,7 @@ public sealed partial class WidgetManager
     {
         if (!HasUiThreadAccess())
         {
-            App.UiDispatcherQueue.TryEnqueue(
+            UiDispatch.RunOrDefer(
                 () => BringAuxiliaryWindowToFront(windowHandle, reason));
             return;
         }
@@ -128,7 +128,7 @@ public sealed partial class WidgetManager
     {
         if (!HasUiThreadAccess())
         {
-            App.UiDispatcherQueue.TryEnqueue(
+            UiDispatch.RunOrDefer(
                 () => ReleaseRaisedBandGuest(windowHandle, reason));
             return;
         }
@@ -357,7 +357,7 @@ public sealed partial class WidgetManager
     {
         if (!HasUiThreadAccess())
         {
-            App.UiDispatcherQueue.TryEnqueue(
+            UiDispatch.RunOrDefer(
                 () => QueueIdleWidgetZOrderNormalization(reason, delay, cohesionExit));
             return;
         }
@@ -610,7 +610,7 @@ public sealed partial class WidgetManager
     {
         if (!HasUiThreadAccess())
         {
-            App.UiDispatcherQueue.TryEnqueue(
+            UiDispatch.RunOrDefer(
                 () => RestoreTemporarilyRaisedWidgetsToDesktopLayer(reason));
             return;
         }

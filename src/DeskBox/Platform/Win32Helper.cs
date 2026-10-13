@@ -1861,6 +1861,18 @@ public static partial class Win32Helper
         IntPtr dwMinWorkingSetSize,
         IntPtr dwMaxWorkingSetSize);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool TerminateProcess(IntPtr hProcess, uint uExitCode);
+
+    /// <summary>
+    /// Kills this process without running exit handlers or waiting for any
+    /// runtime thread. Last-resort shutdown backstop only.
+    /// </summary>
+    public static void TerminateCurrentProcess(uint exitCode)
+    {
+        TerminateProcess(GetCurrentProcess(), exitCode);
+    }
+
     /// <summary>
     /// Pages the whole working set out (same effect as minimizing a window).
     /// Historically only safe while every widget was hidden and the user was

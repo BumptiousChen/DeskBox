@@ -85,14 +85,20 @@ internal static class UiDispatch
         }
     }
 
-    /// <summary>True when the current thread may touch XAML objects directly.</summary>
+    /// <summary>
+    /// True when the current thread may touch XAML objects directly. After
+    /// shutdown this is thread identity only: the UI thread keeps running its
+    /// own teardown inline, while RunAsync/RunOrDefer still cancel and drop.
+    /// </summary>
     public static bool HasAccess
     {
         get
         {
             lock (Gate)
             {
-                return DecideNoLock() is Decision.RunInline;
+                return _shutdown
+                    ? _originThreadId == Environment.CurrentManagedThreadId
+                    : DecideNoLock() is Decision.RunInline;
             }
         }
     }

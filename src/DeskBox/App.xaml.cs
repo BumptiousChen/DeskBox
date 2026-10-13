@@ -143,6 +143,7 @@ public partial class App : Application
     private readonly ShutdownSequence _shutdownSequence = new(Log);
     private static int s_shutdownRequested;
     internal static bool IsShuttingDown => Volatile.Read(ref s_shutdownRequested) != 0;
+    private static readonly TimeSpan ShutdownHardTerminateGrace = TimeSpan.FromSeconds(3);
     private TodoReminderService? _todoReminderService => _todoReminderRuntime?.Current as TodoReminderService;
     private DisplayAreaWatcherService? _displayAreaWatcher;
     private DisplayTopologyTransitionCoordinator? _displayTopologyTransitionCoordinator;
@@ -5229,16 +5230,34 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Delayed hard termination that guarantees the process dies even when
-    /// Application.Exit fails to unwind every thread. A pool thread, so it
-    /// never keeps a healthy shutdown alive; the log drain mirrors the
-    /// startup fatal path so the exit tail is not swallowed.
+    /// Delayed termination that guarantees the process dies even when
+    /// Application.Exit fails to unwind the XAML loop. Stage one is the
+    /// graceful Environment.Exit. It never returns, and under CoreCLR it
+    /// waits forever for a finalizer thread that a cross-apartment WinRT
+    /// release can block, so stage two is armed first on its own thread and
+    /// hard-terminates. Both are background threads, so neither keeps a
+    /// healthy shutdown alive; the log drain mirrors the startup fatal path
+    /// so the exit tail is not swallowed.
     /// </summary>
     private static void ArmShutdownExitBackstop(TimeSpan delay)
     {
+        var hardStop = new Thread(() =>
+        {
+            Thread.Sleep(delay + ShutdownHardTerminateGrace);
+            Log("[Shutdown] Exit backstop did not complete; terminating the process.");
+            DrainLogQueue();
+            Win32Helper.TerminateCurrentProcess(0);
+        })
+        {
+            IsBackground = true,
+            Name = "DeskBox shutdown hard stop"
+        };
+        hardStop.Start();
+
         _ = Task.Run(async () =>
         {
             await Task.Delay(delay);
+            Log($"[Shutdown] Exit backstop fired: the XAML loop was still alive {delay.TotalSeconds:F0}s after Exit().");
             DrainLogQueue();
             Environment.Exit(0);
         });
@@ -5299,12 +5318,13 @@ public partial class App : Application
                     // Application.Exit only requests the XAML loop to stop.
                     // When teardown was skipped, its pump can stay alive after
                     // Exit returns (measured: the deadline probe pumped
-                    // forever); even a completed teardown can leave foreign
-                    // threads parking the process as a silent zombie — tray
-                    // gone, mutex released, process resident and pinning the
-                    // thumbnail proxy's stdin pipe (feedback 555/556). Arm the
-                    // hard exit on every path; a healthy Exit() outruns the
-                    // timer and the delayed call never fires.
+                    // forever); even a completed teardown can leave dispatcher
+                    // work that keeps re-queueing itself, so the UI thread
+                    // spins and the loop never drains — a silent zombie with
+                    // tray gone, mutex released, process resident and pinning
+                    // the thumbnail proxy's stdin pipe (feedback 555/556,
+                    // #530/#532). Arm the hard exit on every path; a healthy
+                    // Exit() outruns the timer and the delayed call never fires.
                     ArmShutdownExitBackstop(TimeSpan.FromSeconds(
                         dependentTeardownCompleted ? 5 : 3));
                     if (dependentTeardownCompleted &&

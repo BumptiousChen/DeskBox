@@ -440,6 +440,10 @@ public sealed partial class FileSurfaceContent :
         PersistSurfaceReorder();
         ResetDragPayloadCache();
         ViewModel.PrepareStackDisplayForReuse();
+        // Reattaching a parked member is a display transition: icons its
+        // release dropped while parked come back through this heal instead
+        // of waiting for a folder refresh.
+        ViewModel.HealReleasedItemIconsIfIdle();
     }
 
     internal void OnDeactivated()
@@ -915,6 +919,10 @@ public sealed partial class FileSurfaceContent :
 
         _isWindowRevealCompleted = true;
         bool hasDeferredChanges = ViewModel.ResumeBackgroundActivity();
+        // Revealing a long-hidden surface is a display transition; the disk
+        // reconciliation below is freshness-gated, so released icons need
+        // this heal to come back on a quick reveal too.
+        ViewModel.HealReleasedItemIconsIfIdle();
         QueueDiskReconciliationIfStale(
             "reveal-completed",
             hasDeferredChanges);
@@ -3978,6 +3986,27 @@ public sealed partial class FileSurfaceContent :
 
             return movedSourcePaths;
         }
+        catch (FileService.FileTransferCanceledException ex) when (
+            ex.CompletedResults.Count > 0)
+        {
+            // A shell transfer the user cancelled mid-way already applied
+            // its completed set (the view model's partial-results adapter);
+            // surface it as a partial import instead of a silent cancel —
+            // the retired legacy bridge returned exactly this completed set
+            // and its callers reported it as a short success.
+            await CompleteTrackedImportAsync(ImportCompletionState.Canceled);
+            importedItemCount += ex.CompletedResults.Count;
+            if (moveWhenMapped == true)
+            {
+                movedSourcePaths.AddRange(ex.CompletedResults
+                    .Where(result =>
+                        !File.Exists(result.SourcePath) &&
+                        !Directory.Exists(result.SourcePath))
+                    .Select(result => result.SourcePath));
+            }
+
+            return movedSourcePaths;
+        }
         catch (OperationCanceledException)
         {
             await CompleteTrackedImportAsync(ImportCompletionState.Canceled);
@@ -5414,6 +5443,36 @@ public sealed partial class FileSurfaceContent :
                     "file-paste"));
             }
 
+            return;
+        }
+
+        // Paste shares the drop channels' transfer guards: a source that is
+        // itself mid-transfer, an all-sources-already-in-destination no-op,
+        // and an unsafe directory move each get their dedicated feedback.
+        // Without these, the plan-layer same-directory filter made the
+        // cut-then-paste-in-place case a silent no-op with no UI response.
+        if (HasTransferConflict(sourcePaths, ViewModel.CurrentFolderPath))
+        {
+            ShowTransferBlockedFeedback(
+                _fileService.TransferSessions.GetState(
+                    sourcePaths[0]) is { IsActive: true } sourceState
+                    ? sourceState
+                    : _fileService.TransferSessions.GetState(
+                        ViewModel.CurrentFolderPath));
+            return;
+        }
+        if (await AreAllSourcesAlreadyInDestinationResolvedAsync(
+                sourcePaths,
+                ViewModel.CurrentFolderPath))
+        {
+            ShowSameDirectoryDropFeedback();
+            return;
+        }
+        if (await Task.Run(() => FileService.IsUnsafeDirectoryTransfer(
+                sourcePaths,
+                ViewModel.CurrentFolderPath)))
+        {
+            ShowUnsafeDirectoryDropFeedback();
             return;
         }
 

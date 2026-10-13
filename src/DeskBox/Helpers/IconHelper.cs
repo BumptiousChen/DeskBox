@@ -757,6 +757,20 @@ public static class IconHelper
     }
 
     /// <summary>
+    /// Clears only the retry-state markers (timeout blacklists), keeping
+    /// every decoded entry. Recovery refreshes call this so previously
+    /// timed-out sources get a fresh attempt without the visual cost of the
+    /// blanket icon clear the freshness ledger retired.
+    /// </summary>
+    internal static void ResetTransientFailures()
+    {
+        s_iconSourceTimeouts.Clear();
+        s_iconBytesTimeouts.Clear();
+        ShellThumbnailProxy.ClearTransientFailures();
+        WicBuiltInThumbnailDecoder.ClearTransientFailures();
+    }
+
+    /// <summary>
     /// Trims only completed, cold recreatable image entries beyond a half-sized
     /// warm LRU. Recently used and in-flight entries stay cached so showing a
     /// widget again does not turn into a burst of disk, Shell, and decode work.

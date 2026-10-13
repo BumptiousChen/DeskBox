@@ -583,6 +583,11 @@ public sealed partial class FileSurfaceContent
 
             _stackPopoverKey = currentStack.StackKey;
             _stackPopoverMembers = currentStack.Members.ToArray();
+            // The popover is the only surface that displays every folded
+            // member at once; acquiring their icons here keeps the
+            // release/acquire pairing intact when a release ran while the
+            // stack was collapsed (group switch, long-hidden maintenance).
+            ViewModel.HealReleasedItemIconsIfIdle();
             _stackPopoverLayout = layout;
             _stackPopoverPopupClosing = false;
             _stackPopoverCleanupPending = false;

@@ -768,6 +768,73 @@ public partial class WidgetViewModel
         }
     }
 
+    /// <summary>
+    /// Pure shortcut-target freshness decision shared with behavior tests:
+    /// refresh snapshots never read shortcut targets, so a stored target
+    /// only goes stale when the .lnk itself changed (icon-ledger mismatch).
+    /// An unstamped ledger (-1, extraction never succeeded) means "no
+    /// information" and preserves the stored target.
+    /// </summary>
+    internal static bool ShouldDropStaleHydratedShortcutTarget(
+        bool targetIsShortcut,
+        long targetHydratedIconFileSize,
+        DateTime targetHydratedIconStamp,
+        bool sourceIsShortcut,
+        long sourceFileSize,
+        DateTime sourceLastModified)
+    {
+        return targetIsShortcut &&
+               sourceIsShortcut &&
+               targetHydratedIconFileSize >= 0 &&
+               (targetHydratedIconFileSize != sourceFileSize ||
+                targetHydratedIconStamp != sourceLastModified);
+    }
+
+    /// <summary>
+    /// Pure icon-ledger decision shared with behavior tests: an icon
+    /// reference is stale when the file's size or timestamp moved since
+    /// extraction. This is the invalidation point that replaces
+    /// lifecycle-triggered blanket icon clears: the merge drops exactly the
+    /// changed items, the content-versioned cache key self-heals on the
+    /// re-fetch, and unchanged items keep their icons untouched.
+    /// </summary>
+    internal static bool ShouldDropStaleHydratedIcon(
+        bool hasIcon,
+        long hydratedFileSize,
+        DateTime hydratedStamp,
+        long sourceFileSize,
+        DateTime sourceStamp)
+    {
+        return hasIcon &&
+               (hydratedFileSize != sourceFileSize ||
+                hydratedStamp != sourceStamp);
+    }
+
+    /// <summary>
+    /// Pure folder-count freshness decision shared with behavior tests.
+    /// Refresh snapshots enumerate with folder counts unloaded, so the merge
+    /// must not unconditionally copy the unloaded flag: a folder's
+    /// visible-child count survives a refresh only when the folder's own
+    /// LastWriteTime did not change and it was already loaded. Unconditional
+    /// copying made every activation reconciliation re-enumerate every
+    /// subfolder — a serial full directory scan each (the "mapped folder
+    /// loads slowly" metadata churn).
+    /// </summary>
+    internal static bool DeriveFolderItemCountLoaded(
+        bool targetIsFolder,
+        bool targetIsLoaded,
+        DateTime targetLastModified,
+        bool sourceIsFolder,
+        bool sourceIsLoaded,
+        DateTime sourceLastModified)
+    {
+        return (targetIsFolder &&
+                sourceIsFolder &&
+                targetIsLoaded &&
+                targetLastModified == sourceLastModified) ||
+               sourceIsLoaded;
+    }
+
     private static void ApplyRuntimeItemData(
         WidgetItem target,
         WidgetItem source,
@@ -775,17 +842,58 @@ public partial class WidgetViewModel
     {
         target.Name = source.Name;
         target.Path = source.Path;
-        target.TargetPath = source.TargetPath;
+        if (!string.IsNullOrWhiteSpace(source.TargetPath) ||
+            string.IsNullOrWhiteSpace(target.TargetPath))
+        {
+            target.TargetPath = source.TargetPath;
+        }
+        else if (ShouldDropStaleHydratedShortcutTarget(
+                     target.IsShortcut,
+                     target.HydratedIconFileSize,
+                     target.HydratedIconStamp,
+                     source.IsShortcut,
+                     source.FileSize,
+                     source.LastModified))
+        {
+            // The .lnk itself changed since its target was read: drop the
+            // stored target and the loaded flag so hydration re-reads it.
+            // Snapshots never read targets, so without this guard every
+            // refresh merge wiped the hydrated value.
+            target.TargetPath = source.TargetPath;
+            target.IsShortcutTargetLoaded = false;
+        }
         if (!preserveExistingIconWhenMissing || source.Icon is not null)
         {
             target.Icon = source.Icon;
+        }
+        else if (ShouldDropStaleHydratedIcon(
+                     target.Icon is not null,
+                     target.HydratedIconFileSize,
+                     target.HydratedIconStamp,
+                     source.FileSize,
+                     source.LastModified))
+        {
+            // Ledger mismatch: the file's size or timestamp moved since its
+            // icon was extracted (sleep-time replacements, external edits).
+            // Drop the reference so the hydration universe re-fetches under
+            // the new, content-versioned cache key; matches keep the icon
+            // without touching the cache at all.
+            target.Icon = null;
         }
         target.FileSize = source.FileSize;
         if (source.IsFolderItemCountLoaded)
         {
             target.FolderItemCount = source.FolderItemCount;
         }
-        target.IsFolderItemCountLoaded = source.IsFolderItemCountLoaded;
+        // Computed before LastModified is overwritten below: the comparison
+        // needs the target's previous timestamp.
+        target.IsFolderItemCountLoaded = DeriveFolderItemCountLoaded(
+            target.IsFolder,
+            target.IsFolderItemCountLoaded,
+            target.LastModified,
+            source.IsFolder,
+            source.IsFolderItemCountLoaded,
+            source.LastModified);
         target.CreatedAt = source.CreatedAt;
         target.LastModified = source.LastModified;
         if (source.IsShellKindLoaded)

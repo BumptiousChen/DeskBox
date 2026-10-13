@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.5.7 - 2026-10-13
+
+### English
+
+#### Fixes
+
+- Exiting from the tray now reliably ends the process. On machines where the system's application-exit handshake stalls — typically Windows with UAC fully disabled and an elevated Explorer — a background DeskBox process could stay resident after "exit": the tray vanished and a restart worked, but the leftover process slowly ate memory and kept the right-click menu proxy alive beside it. Every shutdown path now carries a delayed hard-exit backstop, and the elevation notice and search popup close along with shutdown.
+- Windows 10: the "drag out" card under File widgets → drag-and-drop behavior shows its title and question-mark tip again, and the Windows 10 explanation renders in the description area under the title instead of stretching the card out of shape or spilling outside it on scaled, narrower windows.
+- Long auxiliary texts in settings cards (the cloud-backup remote-path hint, runtime-health detail, and backup snapshot summaries) are width-capped so they can no longer push a card's title aside.
+- Dialogs and preview cards — the desktop-organization abandon dialog, its preview cards, and the hotkey recorder — follow the app's theme override again instead of the raw system theme, and desktop-organization rule rows rebuild when the applied theme flips.
+- Desktop-organization rule rows are clickable again; a leftover chevron (double arrows) and a click guard that swallowed every row click shipped together in 1.5.6.
+- Store packaging: the display-name resource consistently resolves to the reserved store name ("DeskBox Widgets"), completing the 1.5.6 packaging follow-up.
+
+### 中文
+
+#### 修复
+
+- 从托盘退出后进程必定结束。在系统"应用退出"握手机制失灵的机器上（典型为 UAC 完全关闭且资源管理器以管理员运行），退出后可能残留一个后台进程：托盘消失、再次启动也正常，但残留进程会慢慢吃内存，还带着右键菜单代理一起驻留。现在所有退出路径都带延迟强制结束的保底，提权提示窗和搜索弹窗也会随退出关闭。
+- Windows 10：「文件格子 → 文件拖放行为 → 拖出格子时」卡片的标题和问号提示恢复显示；Windows 10 说明文字改在标题下方的描述区渲染，不再把卡片撑变形，也不再有文字溢出卡片（高缩放、较窄窗口下同样安全）。
+- 设置卡片里的长辅助文字（云备份远端路径提示、运行时健康详情、备份快照摘要）限宽显示，不会再把卡片标题挤开。
+- 对话框与预览卡——桌面整理的放弃确认、预览卡、热键录制弹窗——重新跟随应用主题覆盖而非系统主题；应用主题切换时桌面整理规则行同步重建配色。
+- 桌面整理规则行恢复可点击；1.5.6 曾同时带入残留箭头（双箭头）和吞掉整行点击的守卫。
+- 商店包：显示名资源统一回退到保留名（DeskBox Widgets），完成 1.5.6 打包收尾。
+
 ## 1.5.6 - 2026-10-12
 
 ### English

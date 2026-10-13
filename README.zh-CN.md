@@ -7,7 +7,7 @@
 > 目前暂不接受外部 PR 合并——欢迎通过 Issue / Discussion 提交 Bug、功能建议与技术讨论，详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![1.5.6 版本](https://img.shields.io/badge/release-1.5.6-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.5.6)
+[![1.5.7 版本](https://img.shields.io/badge/release-1.5.7-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.5.7)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#环境要求)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#下载)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -41,10 +41,10 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 
 ## 下载
 
-DeskBox 1.5.6 已进入发版准备阶段。下方 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.5.6) 下载链接会在正式发布后生效。
+DeskBox 1.5.7 已进入发版准备阶段。下方 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.5.7) 下载链接会在正式发布后生效。
 
-- [DeskBox 1.5.6 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.5.6/DeskBox_Setup_1.5.6_x64.exe)，推荐大多数 Intel 和 AMD 电脑使用。
-- [DeskBox 1.5.6 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.5.6/DeskBox_Setup_1.5.6_arm64.exe)，推荐骁龙、Surface Pro X 等 Windows on ARM 电脑使用。
+- [DeskBox 1.5.7 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.5.7/DeskBox_Setup_1.5.7_x64.exe)，推荐大多数 Intel 和 AMD 电脑使用。
+- [DeskBox 1.5.7 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.5.7/DeskBox_Setup_1.5.7_arm64.exe)，推荐骁龙、Surface Pro X 等 Windows on ARM 电脑使用。
 
 两个安装包都是 Full Native AOT 构建，并内置对应架构的私有 Windows App Runtime 2.5.1，可离线安装，不需要另外下载 .NET 10 或 Windows App Runtime。
 
@@ -129,6 +129,14 @@ DeskBox 1.5.6 已进入发版准备阶段。下方 [GitHub Releases](https://git
 - 支持设置本地备份与恢复；待办、随记和格子样式还可定时备份到你自己的 WebDAV 服务器——密码保存在 Windows 凭据管理器，每个数据域独立开关，远端快照可浏览、可按合并或完全恢复两种模式还原。
 - 可导出经过隐私过滤的一键诊断包用于排查问题。
 - 设置使用可恢复快照，退出时刷新待保存内容；保存失败会明确记录和提示，不再静默恢复默认配置。
+
+## 1.5.7 更新亮点
+
+- **退出可靠性。** 从托盘退出后进程必定结束——在系统退出握手机制失灵的机器上（典型为 UAC 完全关闭且资源管理器以管理员运行），此前会残留一个后台进程慢慢吃内存，还带着右键菜单代理一起驻留。
+- **Windows 10 细节。** 「文件格子 → 文件拖放行为 → 拖出格子时」卡片的标题与问号提示恢复显示，Windows 10 说明文字改在标题下方描述区渲染，不再撑坏卡片或溢出边界；其他设置卡里的长辅助文字同样限宽。
+- **对话框配色与规则行。** 桌面整理的放弃确认、预览卡、热键录制弹窗重新跟随应用主题覆盖；桌面整理规则行恢复可点击。
+
+完整内容见 [更新日志](CHANGELOG.md) 和 [1.5.7 发布说明](docs/releases/v1.5.7.md)。
 
 ## 1.5.6 更新亮点
 
@@ -246,8 +254,8 @@ ISCC.exe /DDeskBoxNativeAot=1 /DDeskBoxBundledRuntime=1 /DMyAppReleaseDir=..\.ar
 预期输出：
 
 ```text
-Output\DeskBox_Setup_1.5.6_x64.exe
-Output\DeskBox_Setup_1.5.6_arm64.exe
+Output\DeskBox_Setup_1.5.7_x64.exe
+Output\DeskBox_Setup_1.5.7_arm64.exe
 ```
 
 ## 项目结构

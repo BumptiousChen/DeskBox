@@ -5228,6 +5228,22 @@ public partial class App : Application
         await ShutdownApplicationAsync();
     }
 
+    /// <summary>
+    /// Delayed hard termination that guarantees the process dies even when
+    /// Application.Exit fails to unwind every thread. A pool thread, so it
+    /// never keeps a healthy shutdown alive; the log drain mirrors the
+    /// startup fatal path so the exit tail is not swallowed.
+    /// </summary>
+    private static void ArmShutdownExitBackstop(TimeSpan delay)
+    {
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(delay);
+            DrainLogQueue();
+            Environment.Exit(0);
+        });
+    }
+
     private async Task ShutdownApplicationAsync()
     {
         bool dependentTeardownCompleted = true;
@@ -5262,9 +5278,10 @@ public partial class App : Application
                 // The watchdog path guarantees process death within seconds;
                 // releasing the mutex there would open a window where a new
                 // instance starts while this process may still be writing.
-                // Let process death release it instead. The throw path has no
-                // watchdog, so the manual release must remain unconditional
-                // there to never leave a pumping process holding the mutex.
+                // Let process death release it instead. The throw path
+                // finishes its writes before Exit(), so the manual release
+                // must remain unconditional there to never leave a pumping
+                // process holding the mutex.
                 if (dependentTeardownCompleted)
                 {
                     try
@@ -5279,19 +5296,17 @@ public partial class App : Application
                 try { DrainLogQueue(); }
                 finally
                 {
-                    if (!dependentTeardownCompleted)
-                    {
-                        // Application.Exit is deferred through the XAML
-                        // message loop, and the skipped teardown can keep
-                        // that loop alive after Exit returns (measured:
-                        // the deadline probe stayed pumping forever).
-                        // The deadline path must still terminate.
-                        _ = Task.Run(async () =>
-                        {
-                            await Task.Delay(TimeSpan.FromSeconds(3));
-                            Environment.Exit(0);
-                        });
-                    }
+                    // Application.Exit only requests the XAML loop to stop.
+                    // When teardown was skipped, its pump can stay alive after
+                    // Exit returns (measured: the deadline probe pumped
+                    // forever); even a completed teardown can leave foreign
+                    // threads parking the process as a silent zombie — tray
+                    // gone, mutex released, process resident and pinning the
+                    // thumbnail proxy's stdin pipe (feedback 555/556). Arm the
+                    // hard exit on every path; a healthy Exit() outruns the
+                    // timer and the delayed call never fires.
+                    ArmShutdownExitBackstop(TimeSpan.FromSeconds(
+                        dependentTeardownCompleted ? 5 : 3));
                     if (dependentTeardownCompleted &&
                         AppRelaunchService.PendingOsRestartOnShutdown &&
                         DistributionService.IsMicrosoftStore)
@@ -5395,6 +5410,11 @@ public partial class App : Application
                 _featureRuntimes?.DisposeAsync(TodoRemindersFeatureRuntimeId) ?? Task.CompletedTask,
                 shutdownGrace, abortFollowingStepsOnTimeout: true),
             ShutdownStep.Sync("notifications", () => { _nativeNotificationService?.Dispose(); _nativeNotificationService = null; }),
+            ShutdownStep.Sync("search-popup-window", () =>
+            {
+                _searchPopupWindow?.Close();
+                _searchPopupWindow = null;
+            }),
             ShutdownStep.Bounded("search-settings", () =>
                 _searchSettings?.StopAsync() ?? Task.CompletedTask,
                 shutdownGrace, abortFollowingStepsOnTimeout: true),
@@ -5416,6 +5436,7 @@ public partial class App : Application
             ShutdownStep.Sync("settings-window", () => { _settingsWindow?.CloseForShutdown(); _settingsWindow = null; }),
             ShutdownStep.Sync("backup-settings", () => _backupSettings?.Dispose()),
             ShutdownStep.Sync("onboarding-window", () => { _onboardingWindow?.Close(); _onboardingWindow = null; }),
+            ShutdownStep.Sync("elevation-notice-window", () => { _elevationNoticeWindow?.Close(); _elevationNoticeWindow = null; }),
             // Closing a surface may commit its final edit/order. Flush after
             // those consumers are closed, while persistence services still live.
             new("settings-flush", async () =>

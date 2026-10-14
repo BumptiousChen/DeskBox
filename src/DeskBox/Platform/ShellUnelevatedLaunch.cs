@@ -341,16 +341,27 @@ internal static class ShellUnelevatedLaunch
                     return false;
                 }
 
-                // The permissive DACL is applied AFTER creation, via the
+                // The permissive security is applied AFTER creation, via the
                 // creator's own full-access handle: an explicit
                 // SECURITY_ATTRIBUTES at CreateProcess time is the least
                 // exercised path and correlated with a child whose native
                 // drag loop never received target events (2026-10-14 field
                 // report), while the IntPtr.Zero shape is the field-proven
-                // one. Without any fix the child inherits the elevated
+                // one.
+                //
+                // DACL: SYSTEM, Administrators and the current user each get
+                // full access — without it the child inherits the elevated
                 // creator's default DACL (Administrators only) and a
-                // standard user can no longer terminate the relaunched
-                // Medium process.
+                // standard user cannot open the relaunched process at all.
+                //
+                // Mandatory label: the elevated creator stamps a High label
+                // on the process object, and no-write-up then denies
+                // standard-user terminate-class access even though the DACL
+                // grants it (field observation 2026-10-14: taskkill denied
+                // while a raw PROCESS_TERMINATE open succeeded). Setting the
+                // label needs WRITE_OWNER, which the creator handle carries.
+                // Normalizing it to the child's Medium integrity makes the
+                // object indistinguishable from an explorer-launched process.
                 string? userSid;
                 try
                 {
@@ -362,7 +373,8 @@ internal static class ShellUnelevatedLaunch
                 }
 
                 string sddl = "D:P(A;;GA;;;SY)(A;;GA;;;BA)" +
-                    (userSid is null ? string.Empty : $"(A;;GA;;;{userSid})");
+                    (userSid is null ? string.Empty : $"(A;;GA;;;{userSid})") +
+                    "S:(ML;;NW;;;S-1-16-8192)";
 
                 if (!ConvertStringSecurityDescriptorToSecurityDescriptor(
                         sddl,
@@ -405,14 +417,14 @@ internal static class ShellUnelevatedLaunch
 
                     if (!SetKernelObjectSecurity(
                             processInformation.hProcess,
-                            4 /* DACL_SECURITY_INFORMATION */,
+                            4 | 16 /* DACL | LABEL_SECURITY_INFORMATION */,
                             securityDescriptor))
                     {
                         // The kill-access fix is best-effort: the child still
                         // runs; only its terminability from a standard user
                         // session is unchanged from the historical behavior.
                         log?.Invoke(
-                            $"[ShellUnelevatedLaunch] Post-create DACL failed error={Marshal.GetLastWin32Error()}");
+                            $"[ShellUnelevatedLaunch] Post-create security failed error={Marshal.GetLastWin32Error()}");
                     }
 
                     CloseHandle(processInformation.hThread);

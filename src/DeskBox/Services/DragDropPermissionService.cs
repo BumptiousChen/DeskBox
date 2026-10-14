@@ -24,7 +24,8 @@ public enum DragDropDiagnosticIssue
     PermissionMismatch,
     AppCompatIssue,
     StartupShortcutIssue,
-    ShellAboveApp
+    ShellAboveApp,
+    ShortcutRunAs
 }
 
 /// <summary>
@@ -148,6 +149,10 @@ public static class DragDropPermissionService
             startupState is StartupRegistrationState.PathMismatch or
                 StartupRegistrationState.BlockedOrFailed;
         bool hasShortcutIssue = shortcutProbes.Any(probe => probe.HasIssue);
+        // Distinct from the generic shortcut issues: this one causes
+        // elevation on every launch and is invisible to the registry-based
+        // AppCompat scan, so it gets its own remediation text.
+        bool hasShortcutRunAsIssue = shortcutProbes.Any(probe => probe.HasRunAsFlag);
         bool permissionMismatch =
             currentToken.IsElevated == true &&
             explorerToken.IsElevated == false;
@@ -162,7 +167,7 @@ public static class DragDropPermissionService
             (!isUacDisabled || explorerToken.IsElevated == false);
 
         DragDropDiagnosticSeverity severity =
-            isUacDisabled || permissionMismatch || shellAboveApp || hasAppCompatIssue || hasStartupIssue || hasShortcutIssue
+            isUacDisabled || permissionMismatch || shellAboveApp || hasAppCompatIssue || hasShortcutRunAsIssue || hasStartupIssue || hasShortcutIssue
                 ? DragDropDiagnosticSeverity.Warning
                 : DragDropDiagnosticSeverity.Ok;
 
@@ -186,6 +191,12 @@ public static class DragDropPermissionService
             issue = DragDropDiagnosticIssue.ShellAboveApp;
             summary = Text(localizationService, "Settings.DragDropPermission.Summary.ShellAboveApp");
             detail = Text(localizationService, "Settings.DragDropPermission.Detail.ShellAboveApp");
+        }
+        else if (hasShortcutRunAsIssue)
+        {
+            issue = DragDropDiagnosticIssue.ShortcutRunAs;
+            summary = Text(localizationService, "Settings.DragDropPermission.Summary.ShortcutRunAs");
+            detail = Text(localizationService, "Settings.DragDropPermission.Detail.ShortcutRunAs");
         }
         else if (hasAppCompatIssue)
         {
@@ -253,6 +264,12 @@ public static class DragDropPermissionService
                 entry => ContainsIncompatibleAppCompatToken(entry.Value)))
         {
             lines.Add(Text(localizationService, "Settings.DragDropPermission.Summary.AppCompatIssue"));
+        }
+
+        if (GetKnownShortcutPaths().Any(path =>
+                File.Exists(path) && TryGetShortcutRunAsFlag(path)))
+        {
+            lines.Add(Text(localizationService, "Settings.DragDropPermission.Summary.ShortcutRunAs"));
         }
 
         return string.Join(Environment.NewLine, lines);
@@ -682,6 +699,52 @@ public static class DragDropPermissionService
             : Format(localizationService, "Settings.DragDropPermission.Status.Normal", startupValue);
     }
 
+    private const uint SldfRunAsUser = 0x0000_2000;
+
+    /// <summary>
+    /// Standalone COM reader for a shortcut's "Run as administrator" flag.
+    /// Deliberately independent of the TryReadShortcut backend split: the
+    /// flag lives in the link header (IShellLinkDataList::GetFlags /
+    /// SLDF_RUNAS_USER), not in target/arguments, and ComImport interop
+    /// compiles in NativeAOT (same shape as JumpListService). A .lnk with
+    /// this bit relaunches DeskBox elevated on every open, which the
+    /// registry-based AppCompat scan cannot see.
+    /// </summary>
+    [ComImport]
+    [Guid("00021401-0000-0000-C000-000000000046")]
+    private sealed class ShellLinkForFlagProbe
+    {
+    }
+
+    [ComImport]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    [Guid("45E2B4AE-B1C3-11D0-B92F-00A0C90312E1")]
+    private interface IShellLinkDataList
+    {
+        void AddDataBlock(IntPtr pDataBlock);
+        void RemoveDataBlock(IntPtr pDataBlock);
+        [PreserveSig]
+        int GetFlags(out uint dwFlags);
+        void SetFlags(uint dwFlags);
+    }
+
+    internal static bool TryGetShortcutRunAsFlag(string shortcutPath)
+    {
+        try
+        {
+            var shellLink = (IShellLinkDataList)(object)new ShellLinkForFlagProbe();
+            ((System.Runtime.InteropServices.ComTypes.IPersistFile)shellLink).Load(shortcutPath, 0);
+            return shellLink.GetFlags(out uint flags) == 0 &&
+                (flags & SldfRunAsUser) != 0;
+        }
+        catch (Exception ex)
+        {
+            App.Log(
+                $"[DragDropPermission] Run-as flag probe failed for '{shortcutPath}': {ex.Message}");
+            return false;
+        }
+    }
+
     private static List<ShortcutProbe> GetShortcutProbes(string currentExePath, LocalizationService? localizationService)
     {
         var probes = new List<ShortcutProbe>();
@@ -695,6 +758,7 @@ public static class DragDropPermissionService
 
             bool hasIssue = false;
             string reason = Text(localizationService, "Settings.DragDropPermission.Status.Present");
+            bool hasRunAsFlag = false;
             try
             {
                 if (TryReadShortcut(shortcutPath, out string? targetPath, out string? arguments))
@@ -711,6 +775,16 @@ public static class DragDropPermissionService
                     hasIssue = true;
                     reason = Text(localizationService, "Settings.DragDropPermission.Status.ShortcutTargetUnreadable");
                 }
+
+                hasRunAsFlag = TryGetShortcutRunAsFlag(shortcutPath);
+                if (hasRunAsFlag)
+                {
+                    // The registry-based AppCompat scan cannot see this
+                    // elevation source; surface it at the probe level too so
+                    // the shortcut status line explains itself.
+                    hasIssue = true;
+                    reason = Text(localizationService, "Settings.DragDropPermission.Status.ShortcutRunAs");
+                }
             }
             catch (Exception ex)
             {
@@ -718,7 +792,7 @@ public static class DragDropPermissionService
                 reason = Format(localizationService, "Settings.DragDropPermission.Status.CheckFailed", ex.Message);
             }
 
-            probes.Add(new ShortcutProbe(shortcutPath, hasIssue, reason));
+            probes.Add(new ShortcutProbe(shortcutPath, hasIssue, reason, hasRunAsFlag));
         }
 
         return probes;
@@ -1193,7 +1267,8 @@ public static class DragDropPermissionService
     private sealed record ShortcutProbe(
         string Path,
         bool HasIssue,
-        string Reason);
+        string Reason,
+        bool HasRunAsFlag = false);
 
     private sealed record ShortcutDefinition(
         string Path,

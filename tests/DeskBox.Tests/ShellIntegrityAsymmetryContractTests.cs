@@ -101,4 +101,18 @@ public class ShellIntegrityAsymmetryContractTests
             DragDropDiagnosticIssue.ShellAboveApp);
         Assert.NotEqual(DragDropDiagnosticIssue.None, DragDropDiagnosticIssue.ShellAboveApp);
     }
+
+    [Fact]
+    public void DiagnoseIssue_KnowsShortcutRunAsAsDistinctIssue()
+    {
+        // A .lnk-level "run as administrator" elevates on every launch and
+        // is invisible to the registry AppCompat scan, so it must surface as
+        // its own issue with its own remediation text — never folded into
+        // the startup/shortcut or appcompat buckets.
+        Assert.NotEqual(
+            DragDropDiagnosticIssue.StartupShortcutIssue,
+            DragDropDiagnosticIssue.ShortcutRunAs);
+        Assert.NotEqual(DragDropDiagnosticIssue.AppCompatIssue, DragDropDiagnosticIssue.ShortcutRunAs);
+        Assert.NotEqual(DragDropDiagnosticIssue.None, DragDropDiagnosticIssue.ShortcutRunAs);
+    }
 }

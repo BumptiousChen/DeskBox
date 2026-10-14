@@ -83,6 +83,105 @@ public partial class WidgetViewModel
     }
 
     /// <summary>
+    /// Block-aware multi-selection variant of <see cref="MoveItemForReorder"/>.
+    /// The dragged items keep their relative order and land as one contiguous
+    /// block. The block is applied through sequential collection moves rather
+    /// than a remove/insert rebuild, which preserves the ListView selection
+    /// across the reorder.
+    /// </summary>
+    public bool MoveItemsForReorder(
+        IReadOnlyList<WidgetItem> draggedItems,
+        int targetIndex)
+    {
+        if (Config.SortMode != WidgetSortMode.Manual ||
+            draggedItems.Count == 0)
+        {
+            return false;
+        }
+
+        if (draggedItems.Count == 1)
+        {
+            return MoveItemForReorder(
+                draggedItems[0],
+                targetIndex);
+        }
+
+        if (!TryComputeItemBlockReorder(
+                Items,
+                draggedItems,
+                targetIndex,
+                out int insertionIndex))
+        {
+            return false;
+        }
+
+        HashSet<WidgetItem> draggedSet = new(
+            draggedItems,
+            ReferenceEqualityComparer.Instance);
+        foreach (WidgetItem item in Items
+                     .Where(draggedSet.Contains)
+                     .ToList())
+        {
+            int currentIndex = IndexOfReference(Items, item, 0);
+            if (currentIndex >= 0 && currentIndex != insertionIndex)
+            {
+                Items.Move(currentIndex, insertionIndex);
+            }
+
+            insertionIndex++;
+        }
+
+        return true;
+    }
+
+    // Computes where a contiguous block move lands: the insertion index
+    // counts how many dragged items already sit ahead of the drop target, so
+    // removing them from their old positions cannot shift the landing spot.
+    // Returns false for an equivalent drop that would not change the order.
+    internal static bool TryComputeItemBlockReorder(
+        IReadOnlyList<WidgetItem> items,
+        IReadOnlyList<WidgetItem> draggedItems,
+        int targetIndex,
+        out int insertionIndex)
+    {
+        insertionIndex = -1;
+        HashSet<WidgetItem> draggedSet = new(
+            draggedItems,
+            ReferenceEqualityComparer.Instance);
+        List<int> draggedIndices = new(draggedSet.Count);
+        for (int index = 0; index < items.Count; index++)
+        {
+            if (draggedSet.Contains(items[index]))
+            {
+                draggedIndices.Add(index);
+            }
+        }
+
+        if (draggedIndices.Count == 0)
+        {
+            return false;
+        }
+
+        int cappedIndex = Math.Clamp(targetIndex, 0, items.Count);
+        int movingBeforeInsertion = draggedIndices
+            .Count(index => index < cappedIndex);
+        insertionIndex = Math.Clamp(
+            cappedIndex - movingBeforeInsertion,
+            0,
+            items.Count - draggedIndices.Count);
+
+        for (int offset = 0; offset < draggedIndices.Count; offset++)
+        {
+            if (draggedIndices[offset] != insertionIndex + offset)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Persists the current item order to config and settings.
     /// Called once after real-time reordering is complete (on drop).
     /// </summary>

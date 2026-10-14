@@ -52,6 +52,7 @@ public sealed partial class FileSurfaceContent :
     private Windows.Foundation.Point _surfaceReorderLastPosition;
     private bool _surfaceReorderHasLastPosition;
     private WidgetItem? _surfaceReorderDraggedItem;
+    private WidgetItem[] _surfaceReorderDraggedItems = [];
     private HashSet<string>? _surfaceReorderPathSet;
     private ListViewBase? _surfaceReorderLastView;
     private WidgetItem[] _pendingPointerDragItems = [];
@@ -4369,6 +4370,7 @@ public sealed partial class FileSurfaceContent :
                     StringComparison.Ordinal))
             {
                 _surfaceReorderDraggedItem = null;
+                _surfaceReorderDraggedItems = [];
                 _surfaceReorderPathSet = null;
                 _surfaceReorderLastView = null;
             }
@@ -4389,10 +4391,10 @@ public sealed partial class FileSurfaceContent :
         _surfaceReorderPathSet ??= paths
             .Select(Path.GetFullPath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        WidgetItem? draggedItem = _surfaceReorderDraggedItem ??
-            ViewModel.Items.FirstOrDefault(item =>
-                _surfaceReorderPathSet.Contains(Path.GetFullPath(item.Path)));
-        if (draggedItem is null)
+        WidgetItem[] draggedItems = _surfaceReorderDraggedItems.Length > 0
+            ? _surfaceReorderDraggedItems
+            : ResolveSurfaceReorderItems();
+        if (draggedItems.Length == 0)
         {
             return;
         }
@@ -4401,7 +4403,7 @@ public sealed partial class FileSurfaceContent :
         {
             if (ViewModel.UsesStackProjection)
             {
-                if (!ViewModel.PrepareVisibleItemReorder(draggedItem))
+                if (!draggedItems.All(ViewModel.PrepareVisibleItemReorder))
                 {
                     return;
                 }
@@ -4413,7 +4415,8 @@ public sealed partial class FileSurfaceContent :
 
             _isSurfaceReorderDragActive = true;
             _surfaceReorderPaths = paths;
-            _surfaceReorderDraggedItem = draggedItem;
+            _surfaceReorderDraggedItem = draggedItems[0];
+            _surfaceReorderDraggedItems = draggedItems;
         }
 
         UpdateSurfaceReorderPreview(position);
@@ -4431,8 +4434,11 @@ public sealed partial class FileSurfaceContent :
             _surfaceReorderPathSet = _surfaceReorderPaths
                 .Select(Path.GetFullPath)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            _surfaceReorderDraggedItem = ViewModel.Items.FirstOrDefault(item =>
-                _surfaceReorderPathSet.Contains(Path.GetFullPath(item.Path)));
+            _surfaceReorderDraggedItems = ResolveSurfaceReorderItems();
+            _surfaceReorderDraggedItem = _surfaceReorderDraggedItems
+                .Length > 0
+                    ? _surfaceReorderDraggedItems[0]
+                    : null;
         }
 
         CommitSurfaceReorder(position);
@@ -4678,47 +4684,34 @@ public sealed partial class FileSurfaceContent :
         _surfaceReorderPathSet ??= _surfaceReorderPaths
             .Select(Path.GetFullPath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        WidgetItem? draggedItem = _surfaceReorderDraggedItem ??
-            ViewModel.Items.FirstOrDefault(item =>
-                _surfaceReorderPathSet.Contains(Path.GetFullPath(item.Path)));
-        if (draggedItem is null)
-        {
-            return;
-        }
-
-        int currentIndex = ViewModel.UsesStackProjection
-            ? activeView.Items.IndexOf(draggedItem)
-            : ViewModel.Items.IndexOf(draggedItem);
-        if (currentIndex < 0)
+        WidgetItem[] draggedItems = _surfaceReorderDraggedItems.Length > 0
+            ? _surfaceReorderDraggedItems
+            : ResolveSurfaceReorderItems();
+        if (draggedItems.Length == 0)
         {
             return;
         }
 
         if (ViewModel.UsesStackProjection)
         {
-            if (!draggedItem.IsStackChild &&
+            if (draggedItems.Any(item => !item.IsStackChild) &&
                 ViewModel.Config.SortMode != WidgetSortMode.Manual)
             {
                 ViewModel.SetSortMode(WidgetSortMode.Manual);
             }
-            ViewModel.MoveVisibleItemForReorder(
-                draggedItem,
+
+            bool moved = ViewModel.MoveVisibleItemsForReorder(
+                draggedItems,
                 targetIndex);
+            if (moved)
+            {
+                ScheduleSurfaceReorderSelectionRestore(draggedItems);
+            }
             return;
         }
 
-        if (targetIndex > currentIndex)
-        {
-            targetIndex--;
-        }
-
-        if (targetIndex == currentIndex || targetIndex < 0)
-        {
-            return;
-        }
-
-        ViewModel.MoveItemForReorder(
-            draggedItem,
+        ViewModel.MoveItemsForReorder(
+            draggedItems,
             targetIndex);
     }
 
@@ -4730,10 +4723,71 @@ public sealed partial class FileSurfaceContent :
         _surfaceReorderStackKey = null;
         _surfaceReorderInsertionIndex = -1;
         _surfaceReorderDraggedItem = null;
+        _surfaceReorderDraggedItems = [];
         _surfaceReorderPathSet = null;
         _surfaceReorderLastView = null;
         _surfaceReorderLastPosition = default;
         _surfaceReorderHasLastPosition = false;
+    }
+
+    private WidgetItem[] ResolveSurfaceReorderItems()
+    {
+        HashSet<string>? pathSet = _surfaceReorderPathSet;
+        if (pathSet is null || pathSet.Count == 0)
+        {
+            return [];
+        }
+
+        return ViewModel.Items
+            .Where(item => pathSet.Contains(Path.GetFullPath(item.Path)))
+            .ToArray();
+    }
+
+    // A stack-projection rebuild replaces the visible collection, dropping
+    // the multi-selection the user dragged with. Restore it once the rebuilt
+    // projection has settled so the same block can be dragged again for
+    // fine-tuning without reselecting every item.
+    private void ScheduleSurfaceReorderSelectionRestore(
+        IReadOnlyList<WidgetItem> draggedItems)
+    {
+        if (draggedItems.Count == 0)
+        {
+            return;
+        }
+
+        string[] paths = draggedItems
+            .Select(item => Path.GetFullPath(item.Path))
+            .ToArray();
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                if (_isDisposed || IsStackPopoverInteractionActive)
+                {
+                    return;
+                }
+
+                ListViewBase view = GetActiveItemsView();
+                HashSet<string> pathSet = paths
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                List<WidgetItem> restored = view.Items
+                    .OfType<WidgetItem>()
+                    .Where(item => item is not WidgetStackItem &&
+                        pathSet.Contains(Path.GetFullPath(item.Path)))
+                    .ToList();
+                if (restored.Count == 0)
+                {
+                    return;
+                }
+
+                view.SelectedItems.Clear();
+                foreach (WidgetItem item in restored)
+                {
+                    view.SelectedItems.Add(item);
+                }
+
+                UpdateSelectionCommandBar();
+            });
     }
 
     private void CommitSurfaceReorder(

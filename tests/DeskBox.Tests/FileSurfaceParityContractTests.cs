@@ -1729,6 +1729,74 @@ public sealed class FileSurfaceParityContractTests
     }
 
     [Fact]
+    public void SurfaceReorder_CommitsMultiSelectionAsOneBlock()
+    {
+        string root = FindRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs"));
+        string stackPopover = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.StackPopover.cs"));
+        string stacks = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/ViewModels/WidgetViewModel.Stacks.cs"));
+        string sorting = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/ViewModels/WidgetViewModel.SortingAndWatchers.cs"));
+
+        // The commit path must resolve the whole dragged selection, not a
+        // FirstOrDefault anchor collapse.
+        Assert.Contains(
+            "_surfaceReorderDraggedItems",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ResolveSurfaceReorderItems()",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ViewModel.MoveVisibleItemsForReorder(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ViewModel.MoveItemsForReorder(",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "ViewModel.Items.FirstOrDefault(item =>\n" +
+            "                _surfaceReorderPathSet.Contains",
+            source.Replace("\r\n", "\n", StringComparison.Ordinal),
+            StringComparison.Ordinal);
+
+        // Block primitives live in the view model with a single persist per
+        // phase so a multi-selection cannot trigger a per-item rebuild storm.
+        Assert.Contains(
+            "TryMoveDisplayUnitOverrides(",
+            stacks,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DetachStackMembersForBlockReorder(",
+            stacks,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "TryComputeItemBlockReorder(",
+            sorting,
+            StringComparison.Ordinal);
+
+        // A projection rebuild drops the dragged selection; both surfaces
+        // must schedule a restore instead of leaving the block unselected.
+        Assert.Contains(
+            "ScheduleSurfaceReorderSelectionRestore(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ScheduleStackPopoverReorderSelectionRestore(",
+            stackPopover,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DragAcrossFileSurfaces_KeepsTargetVisualsIdempotent()
     {
         string root = FindRepositoryRoot();

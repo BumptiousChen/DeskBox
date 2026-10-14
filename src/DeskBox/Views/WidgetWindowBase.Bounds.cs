@@ -314,6 +314,12 @@ public abstract partial class WidgetWindowBase
         }
 
         RestoreDesktopPinnedBottomState(reason);
+        // The deliberate activation promoted the whole DefView owner band;
+        // drop the siblings back under covering applications in this same
+        // cycle so only the interacting window stays up (#574).
+        App.Current.WidgetManager?.RebedPinnedSiblingsAfterActivation(
+            HWnd,
+            $"{reason}-siblings");
     }
 
     private static bool IsDesktopShellRootWindow(IntPtr windowHandle)
@@ -355,6 +361,15 @@ public abstract partial class WidgetWindowBase
         {
             RestoreDesktopPinnedBottomState(
                 $"window-{args.WindowActivationState}");
+            // A native activation also promoted the whole owner band; re-bed
+            // the siblings in the same cycle so the group never lingers above
+            // covering applications (#574).
+            if (args.WindowActivationState == WindowActivationState.CodeActivated)
+            {
+                App.Current.WidgetManager?.RebedPinnedSiblingsAfterActivation(
+                    HWnd,
+                    "window-CodeActivated-siblings");
+            }
         }
     }
 
